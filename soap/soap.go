@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/xml"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"time"
 )
@@ -153,6 +152,7 @@ type options struct {
 	tlsCfg      *tls.Config
 	auth        *basicAuth
 	timeout     time.Duration
+	transport   *http.Transport
 	httpHeaders map[string]string
 }
 
@@ -177,10 +177,17 @@ func WithTLS(tls *tls.Config) Option {
 	}
 }
 
-// WithTimeout is an Option to set default HTTP dial timeout
+// WithTimeout is an Option to set default HTTP client timeout
 func WithTimeout(t time.Duration) Option {
 	return func(o *options) {
 		o.timeout = t
+	}
+}
+
+// WithTimeout is an Option to set default HTTP dial timeout
+func WithTransport(t *http.Transport) Option {
+	return func(o *options) {
+		o.transport = t
 	}
 }
 
@@ -256,14 +263,14 @@ func (s *Client) Call(soapAction string, request, response interface{}) error {
 	}
 	req.Close = true
 
-	tr := &http.Transport{
-		TLSClientConfig: s.opts.tlsCfg,
-		Dial: func(network, addr string) (net.Conn, error) {
-			return net.DialTimeout(network, addr, s.opts.timeout)
-		},
+	var tr = &http.Transport{}
+	if s.opts.transport != nil {
+		tr = s.opts.transport
 	}
 
-	client := &http.Client{Transport: tr}
+	tr.TLSClientConfig = s.opts.tlsCfg
+
+	client := &http.Client{Transport: tr, Timeout: s.opts.timeout}
 	res, err := client.Do(req)
 	if err != nil {
 		return err
